@@ -7,7 +7,7 @@ const { validateSignUpData } = require("./utils/validation.js")
 const bcrypt = require("bcrypt");
 const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
-
+const { userAuth } = require("./middlewares/auth.js")
 
 
 
@@ -66,12 +66,16 @@ app.post("/login", async (req, res, next) => {
         if (isPasswordValid) {
 
 
-            const token = await jwt.sign({ _id: user._id }, "mypassword")
+            const token = await jwt.sign({ _id: user._id }, "mypassword" , {
+                expiresIn: "1d"
+            })
 
             // console.log(token);
 
 
-            res.cookie("token", token);
+            res.cookie("token", token ,{
+                expires: new Date(Date.now() + 8 * 36000 ),
+            });
             res.send("User LoggedIn")
 
         } else {
@@ -84,21 +88,11 @@ app.post("/login", async (req, res, next) => {
 })
 
 
-app.get("/profile", async (req, res) => {
+app.get("/profile", userAuth , async (req, res) => {
 
     try {
-
-        const cookies = req.cookies;
-
-        const { token } = cookies
-        if(!token){
-           throw new Error("Invalid Token") 
-        }
-
-        const decodedMessage = await jwt.verify(token, "mypassword")
-
-        const { _id } = decodedMessage;
-        const user = await User.findById(_id)
+        // req.user got from userAuth middleware where user is the db data of the particular user who want to see the profile
+        const user = req.user;
         if(!user){
             throw new Error("user Not Found")
         }
@@ -167,6 +161,17 @@ app.patch("/user/:userId", async (req, res) => {
     } catch (error) {
         res.status(400).send("Can't Update: " + error.message)
     }
+})
+
+
+
+app.post("/sendConnectionRequest", userAuth ,  async (req, res ,  next) =>{
+
+    const user = req.user;
+    
+
+    res.send(user.firstName + " Is Sending A Connection Request !")
+    
 })
 
 
