@@ -2,108 +2,28 @@ const express = require('express');
 
 const app = express();
 const connectDB = require("./config/database.js");
-const User = require('./models/user.js');
-const { validateSignUpData } = require("./utils/validation.js")
-const bcrypt = require("bcrypt");
 const cookieParser = require('cookie-parser')
-const jwt = require('jsonwebtoken')
-const { userAuth } = require("./middlewares/auth.js")
 
 
-
+const User = require('./models/user.js');
 
 
 app.use(express.json())
 app.use(cookieParser())
 
 
-
-
-app.post("/signup", async (req, res) => {
-    try {
-
-
-        validateSignUpData(req);
-        // console.log(validateSignUpData);
-
-        const { firstName, lastName, emailId, password } = req.body;
-
-        const passwordHash = await bcrypt.hash(password, 10)
-
-        const user = new User({
-            firstName,
-            lastName,
-            emailId,
-            password: passwordHash,
-        })
-
-        // console.log(user);
+const authRouter = require("./routes/auth.js")
+const profileRouter = require("./routes/profile.js")
+const requestRouter = require("./routes/request.js");
 
 
 
-        await user.save()
-        res.send("user added sussesfully...")
-
-    } catch (error) {
-        res.status(400).send("Error saving the user" + error.message)
-    }
+app.use("/" , authRouter );
+app.use("/" , profileRouter);
+app.use("/" , requestRouter);
 
 
-})
 
-app.post("/login", async (req, res, next) => {
-    try {
-        const { emailId, password } = req.body;
-
-        const user = await User.findOne({ emailId: emailId })
-        // console.log(user);
-
-        if (!user) {
-            throw new Error("Invalid Credentials.")
-        }
-
-        const isPasswordValid = await bcrypt.compare(password, user.password)
-        if (isPasswordValid) {
-
-
-            const token = await jwt.sign({ _id: user._id }, "mypassword" , {
-                expiresIn: "1d"
-            })
-
-            // console.log(token);
-
-
-            res.cookie("token", token ,{
-                expires: new Date(Date.now() + 8 * 36000 ),
-            });
-            res.send("User LoggedIn")
-
-        } else {
-            throw new Error("Password not Matched.")
-        }
-
-    } catch (error) {
-        res.status(400).send("Error : " + error.message)
-    }
-})
-
-
-app.get("/profile", userAuth , async (req, res) => {
-
-    try {
-        // req.user got from userAuth middleware where user is the db data of the particular user who want to see the profile
-        const user = req.user;
-        if(!user){
-            throw new Error("user Not Found")
-        }
-
-        res.send(user)
-
-    } catch (error) {
-        res.status(400).send("Error : " + error.message)
-    }
-
-})
 
 
 app.get("/feed", async (req, res) => {
@@ -162,19 +82,6 @@ app.patch("/user/:userId", async (req, res) => {
         res.status(400).send("Can't Update: " + error.message)
     }
 })
-
-
-
-app.post("/sendConnectionRequest", userAuth ,  async (req, res ,  next) =>{
-
-    const user = req.user;
-    
-
-    res.send(user.firstName + " Is Sending A Connection Request !")
-    
-})
-
-
 
 
 
