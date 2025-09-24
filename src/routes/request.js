@@ -1,18 +1,65 @@
 const express = require('express')
-const { userAuth } = require("../middlewares/auth.js")
+const { userAuth } = require("../middlewares/auth.js");
+const ConnectionRequest = require('../models/connectionRequest.js');
+const user = require('../models/user.js');
 
 
 
 
 const requestRouter = express.Router()
 
-requestRouter.post("/sendConnectionRequest", userAuth, async (req, res, next) => {
+requestRouter.post("/request/send/:status/:toUserId", userAuth, async (req, res, next) => {
 
-    const user = req.user;
+    try {
+
+        const fromUserId = req.user._id;
+        const toUserId = req.params.toUserId;
+        const status = req.params.status;
+
+        //checking if any other (status) entered by user 
+        const allowedStatus = ["ignored", "interested"]
+        if (!allowedStatus.includes(status)) {
+            return res.status(400).json({ message: "Invalid Status Type : " + status })
+        }
+
+        // checking is there the reciever ( toUser) is present on db or sender randomly send request to anyone else 
+        const toUser = await user.findById(toUserId)
+        const toUserFirstName = toUser?.firstName
+
+        if(!toUser){
+            return res.status(404).json({message:"Reciever User Not Found !!!"})
+        }
 
 
-    res.send(user.firstName + " Is Sending A Connection Request !")
+        // if there is a existing connection request  i.e A -> B or B -> A  ( Mongo DB query - Or )
+        const existingConnectionRequest = await ConnectionRequest.findOne({
+            $or: [
+                { fromUserId, toUserId },
+                { fromUserId: toUserId, toUserId: fromUserId }
+            ]
+        })
 
+        if (existingConnectionRequest) {
+            return res.status(400).send({ message: "Conncetion Request Already Exists !! " })
+        }
+
+
+        // creating and saving new instance of connectionRequest collection
+        const connectionRequest = new ConnectionRequest({
+            fromUserId,
+            toUserId,
+            status,
+        })
+        const data = await connectionRequest.save();
+        // console.log(data);
+        res.json({
+            message: `${req.user?.firstName} show ${status} to ${toUserFirstName} . `,
+            data,
+        })
+
+    } catch (error) {
+        res.status(400).send("Error " + error.message)
+    }
 })
 
 
