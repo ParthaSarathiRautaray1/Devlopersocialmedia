@@ -5,6 +5,7 @@ const connectionRequestSchema = new mongoose.Schema({
     fromUserId :{
         type: mongoose.Schema.Types.ObjectId,
         required:true,
+        ref:"User" // connecting 2 collection of db i.e user & connectionRequest 
 
     },
 
