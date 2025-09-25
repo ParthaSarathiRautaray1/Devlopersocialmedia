@@ -68,7 +68,7 @@ requestRouter.post("/request/review/:status/:requestId" , userAuth , async (req,
         const loggedInUser = req.user
         const status = req.params.status
         const requestId = req.params.requestId
-        console.log(requestId);
+        // console.log(requestId);
         
         // validate the status 
         // A -> B then only B can accept or reject the request 
