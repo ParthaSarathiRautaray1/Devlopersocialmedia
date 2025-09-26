@@ -1,7 +1,8 @@
 const express = require('express');
 const { userAuth } = require('../middlewares/auth');
 const userRouter = express.Router();
-const ConnectionRequest = require("../models/connectionRequest")
+const ConnectionRequest = require("../models/connectionRequest");
+const user = require('../models/user');
 
 
 
@@ -66,5 +67,35 @@ userRouter.get("/user/connections" , userAuth , async (req , res , next) => {
 })
 
 
+
+userRouter.get("/feed" , userAuth , async (req , res , next) => {
+    try {
+        const loggedInUser = req.user;
+
+        const connectionRequests = await ConnectionRequest.find({
+            $or: [{ fromUserId: loggedInUser._id} , { toUserId: loggedInUser._id }],
+        }).select("fromUserId toUserId");
+
+
+        const hideUserFromFeed = new Set();
+        connectionRequests.forEach((req) => {
+            hideUserFromFeed.add(req.fromUserId.toString());
+            hideUserFromFeed.add(req.toUserId.toString());
+        })
+
+        // console.log(hideUserFromFeed);
+
+        const users = await user.find({
+           $and: [ 
+            {_id:{ $nin : Array.from(hideUserFromFeed)}},
+            {_id:{ $ne: loggedInUser._id } } ,],
+        }).select(USER_POPULATE_DATA)
+        
+        res.send(users)
+
+    } catch (error) {
+        res.status(400).send("Error " + error.message)
+    }
+})
 
 module.exports = userRouter;
