@@ -97,8 +97,43 @@ userRouter.get("/feed" , userAuth , async (req , res , next) => {
             {_id:{ $nin : Array.from(hideUserFromFeed)}},
             {_id:{ $ne: loggedInUser._id } } ,],
         }).select(USER_POPULATE_DATA).skip(skip).limit(limit)
+
+        // Get logged in user's skills for matching
+        const loggedInUserSkills = loggedInUser.skills || [];
+
+        // Sort users by skill similarity (users with more matching skills appear first)
+        const sortedUsers = users.sort((userA, userB) => {
+            const userASkills = userA.skills || [];
+            const userBSkills = userB.skills || [];
+
+            // Count matching skills with logged in user
+            const userAMatches = userASkills.filter(skill => 
+                loggedInUserSkills.includes(skill)
+            ).length;
+
+            const userBMatches = userBSkills.filter(skill => 
+                loggedInUserSkills.includes(skill)
+            ).length;
+
+            // Handle corner cases:
+            // 1. If both users have skill matches, sort by match count
+            if (userAMatches > 0 || userBMatches > 0) {
+                return userBMatches - userAMatches;
+            }
+
+            // 2. If no skill matches, prioritize users who have skills over users with no skills
+            if (userASkills.length === 0 && userBSkills.length > 0) {
+                return 1; // userB comes first (has skills)
+            }
+            if (userBSkills.length === 0 && userASkills.length > 0) {
+                return -1; // userA comes first (has skills)
+            }
+
+            // 3. If both have no skills or both have skills but no matches, maintain original order
+            return 0;
+        });
         
-        res.send({ data : users})
+        res.send({ data : sortedUsers})
 
     } catch (error) {
         res.status(400).send("Error " + error.message)
