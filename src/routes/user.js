@@ -79,61 +79,95 @@ userRouter.get("/feed" , userAuth , async (req , res , next) => {
 
 
 
-        const connectionRequests = await ConnectionRequest.find({
-            $or: [{ fromUserId: loggedInUser._id} , { toUserId: loggedInUser._id }],
-        }).select("fromUserId toUserId");
-
-
-        const hideUserFromFeed = new Set();
-        connectionRequests.forEach((req) => {
-            hideUserFromFeed.add(req.fromUserId.toString());
-            hideUserFromFeed.add(req.toUserId.toString());
-        })
-
-        // console.log(hideUserFromFeed);
-
-        const users = await user.find({
-           $and: [ 
-            {_id:{ $nin : Array.from(hideUserFromFeed)}},
-            {_id:{ $ne: loggedInUser._id } } ,],
-        }).select(USER_POPULATE_DATA).skip(skip).limit(limit)
-
-        // Get logged in user's skills for matching
         const loggedInUserSkills = loggedInUser.skills || [];
 
-        // Sort users by skill similarity (users with more matching skills appear first)
-        const sortedUsers = users.sort((userA, userB) => {
-            const userASkills = userA.skills || [];
-            const userBSkills = userB.skills || [];
+        const users = await user.aggregate([
+            // Stage 1: Lookup connection requests to find users to exclude
+            {
+                $lookup: {
+                    from: "connectionrequests",
+                    let: { userId: "$_id" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        {
+                                            $or: [
+                                                { $eq: ["$fromUserId", "$$userId"] },
+                                                { $eq: ["$toUserId", "$$userId"] }
+                                            ]
+                                        },
+                                        {
+                                            $or: [
+                                                { $eq: ["$fromUserId", loggedInUser._id] },
+                                                { $eq: ["$toUserId", loggedInUser._id] }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: "connectionHistory"
+                }
+            },
 
-            // Count matching skills with logged in user
-            const userAMatches = userASkills.filter(skill => 
-                loggedInUserSkills.includes(skill)
-            ).length;
+            // Stage 2: Filter out users with connection history and logged-in user
+            {
+                $match: {
+                    $and: [
+                        { connectionHistory: { $size: 0 } }, // No connection history
+                        { _id: { $ne: loggedInUser._id } }   // Not the logged-in user
+                    ]
+                }
+            },
 
-            const userBMatches = userBSkills.filter(skill => 
-                loggedInUserSkills.includes(skill)
-            ).length;
+            // Stage 3: Add skill matching calculations
+            {
+                $addFields: {
+                    skillMatches: {
+                        $size: {
+                            $setIntersection: [
+                                { $ifNull: ["$skills", []] },
+                                loggedInUserSkills
+                            ]
+                        }
+                    },
+                    hasSkills: {
+                        $gt: [{ $size: { $ifNull: ["$skills", []] } }, 0]
+                    }
+                }
+            },
 
-            // Handle corner cases:
-            // 1. If both users have skill matches, sort by match count
-            if (userAMatches > 0 || userBMatches > 0) {
-                return userBMatches - userAMatches;
-            }
+            // Stage 4: Sort by skill relevance
+            {
+                $sort: {
+                    skillMatches: -1,  // First: More skill matches
+                    hasSkills: -1,     // Second: Users with skills
+                    _id: 1             // Third: Consistent ordering
+                }
+            },
 
-            // 2. If no skill matches, prioritize users who have skills over users with no skills
-            if (userASkills.length === 0 && userBSkills.length > 0) {
-                return 1; // userB comes first (has skills)
-            }
-            if (userBSkills.length === 0 && userASkills.length > 0) {
-                return -1; // userA comes first (has skills)
-            }
+            // Stage 5: Select only required fields
+            {
+                $project: {
+                    firstName: 1,
+                    lastName: 1, 
+                    photoUrl: 1,
+                    age: 1,
+                    gender: 1,
+                    skills: 1,
+                    about: 1
+                }
+            },
 
-            // 3. If both have no skills or both have skills but no matches, maintain original order
-            return 0;
-        });
+            // Stage 6: Pagination
+            { $skip: skip },
+            { $limit: limit }
+        ]);
         
-        res.send({ data : sortedUsers})
+        res.send({ data: users })
 
     } catch (error) {
         res.status(400).send("Error " + error.message)
